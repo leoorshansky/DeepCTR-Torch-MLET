@@ -4,4 +4,4 @@
 
 ## Currently working on these models:
 
-### xDeepFM
+### xDeepFM (models/xdeepfm_mlet)
