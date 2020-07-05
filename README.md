@@ -5,3 +5,7 @@
 ## Currently working on these models:
 
 ### xDeepFM
+
+Edited in models/xdeepfm.py
+
+> python3 xdeepfm_criteo_test.py
