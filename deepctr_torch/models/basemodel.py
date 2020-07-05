@@ -19,7 +19,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from ..inputs import build_input_features, SparseFeat, DenseFeat, VarLenSparseFeat, get_varlen_pooling_list, \
-    create_embedding_matrix
+    create_embedding_matrix, create_mlet_embeddings
 from ..layers import PredictionLayer
 from ..layers.utils import slice_arrays
 
@@ -89,11 +89,12 @@ class BaseModel(nn.Module):
                  linear_feature_columns, dnn_feature_columns, dnn_hidden_units=(128, 128),
                  l2_reg_linear=1e-5,
                  l2_reg_embedding=1e-5, l2_reg_dnn=0, init_std=0.0001, seed=1024, dnn_dropout=0, dnn_activation='relu',
-                 task='binary', device='cpu'):
+                 task='binary', device='cpu', mlet_dim=None):
 
         super(BaseModel, self).__init__()
 
         self.dnn_feature_columns = dnn_feature_columns
+        self.mlet_dim = mlet_dim
 
         self.reg_loss = torch.zeros((1,), device=device)
         self.aux_loss = torch.zeros((1,), device=device)
@@ -103,11 +104,14 @@ class BaseModel(nn.Module):
             linear_feature_columns + dnn_feature_columns)
         self.dnn_feature_columns = dnn_feature_columns
 
-        self.embedding_dict = create_embedding_matrix(dnn_feature_columns, init_std, sparse=False, device=device)
-        #         nn.ModuleDict(
-        #             {feat.embedding_name: nn.Embedding(feat.dimension, embedding_size, sparse=True) for feat in
-        #              self.dnn_feature_columns}
-        #         )
+        if not self.mlet_dim:
+            self.embedding_dict = create_embedding_matrix(dnn_feature_columns, init_std, sparse=False, device=device)
+            #         nn.ModuleDict(
+            #             {feat.embedding_name: nn.Embedding(feat.dimension, embedding_size, sparse=True) for feat in
+            #              self.dnn_feature_columns}
+            #         )
+        else:
+            self.embedding_dict = create_mlet_embeddings(dnn_feature_columns, self.mlet_dim, init_std, device=device)
 
         self.linear_model = Linear(
             linear_feature_columns, self.feature_index, device=device)

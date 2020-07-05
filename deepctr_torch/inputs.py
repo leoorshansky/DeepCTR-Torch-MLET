@@ -178,6 +178,93 @@ def create_embedding_matrix(feature_columns, init_std=0.0001, linear=False, spar
 
     return embedding_dict.to(device)
 
+class MLET_Embedding(nn.Embedding):
+    def __init__(self, mlet_dim, num_embeddings, embedding_dim, padding_idx=None,
+                 max_norm=None, norm_type=2., scale_grad_by_freq=False,
+                 sparse=False, _weight=None):
+        super(nn.Embedding, self).__init__()
+        self.mlet_dim = mlet_dim
+        self.num_embeddings = num_embeddings
+        self.embedding_dim = embedding_dim
+        if padding_idx is not None:
+            if padding_idx > 0:
+                assert padding_idx < self.num_embeddings, 'Padding_idx must be within num_embeddings'
+            elif padding_idx < 0:
+                assert padding_idx >= -self.num_embeddings, 'Padding_idx must be within num_embeddings'
+                padding_idx = self.num_embeddings + padding_idx
+        self.padding_idx = padding_idx
+        self.max_norm = max_norm
+        self.norm_type = norm_type
+        self.scale_grad_by_freq = scale_grad_by_freq
+
+        shape = [num_embeddings, embedding_dim]
+        shape[1:1] = list(mlet_dim) # [num_embeddings, d1, d2, ... , embedding_dim]
+        if _weight is None:
+            self.weight = [nn.Parameter(torch.Tensor(*tup)) for tup in zip(shape, shape[1:])]
+            self.reset_parameters()
+        else:
+            assert [mat.shape for mat in _weight] == zip(shape, shape[1:]), \
+                'Shape of weight does not match num_embeddings, mlet_dim, and embedding_dim'
+            self.weight = [nn.Parameter(mat) for mat in _weight]
+        self.sparse = sparse
+
+    def forward(self, input):
+        out = torch.nn.functional.embedding(
+            input, self.weight[0], self.padding_idx, self.max_norm,
+            self.norm_type, self.scale_grad_by_freq, self.sparse)
+        for mat in self.weight[1:]:
+            out = torch.matmul(out, mat)
+        return out
+
+    def reset_parameters(self, mean=0, init_std=0.0001):
+        for mat in self.weight:
+            nn.init.normal_(mat)
+        if self.padding_idx is not None:
+            with torch.no_grad():
+                for mat in self.weight:
+                    mat[self.padding_idx].fill_(0)
+
+    @classmethod
+    def from_pretrained(cls, embeddings, mlet_dim, freeze=True, padding_idx=None,
+                        max_norm=None, norm_type=2., scale_grad_by_freq=False,
+                        sparse=False):
+        embedding = cls(
+            num_embeddings=embeddings[0].shape()[0],
+            mlet_dim=mlet_dim,
+            embedding_dim=embeddings[-1].shape()[1],
+            _weight=embeddings,
+            padding_idx=padding_idx,
+            max_norm=max_norm,
+            norm_type=norm_type,
+            scale_grad_by_freq=scale_grad_by_freq,
+            sparse=sparse)
+        for mat in embedding.weight:
+            mat.requires_grad = not freeze
+        return embedding
+
+def create_mlet_embeddings(feature_columns, dim, init_std=0.0001, linear=False, sparse=False, device='cpu'):
+    # Return nn.ModuleDict: for sparse features, {embedding_name: nn.Embedding}
+    # for varlen sparse features, {embedding_name: nn.EmbeddingBag}
+    sparse_feature_columns = list(
+        filter(lambda x: isinstance(x, SparseFeat), feature_columns)) if len(feature_columns) else []
+
+    varlen_sparse_feature_columns = list(
+        filter(lambda x: isinstance(x, VarLenSparseFeat), feature_columns)) if len(feature_columns) else []
+
+    embedding_dict = nn.ModuleDict(
+        {feat.embedding_name: MLET_Embedding(dim, feat.vocabulary_size, feat.embedding_dim if not linear else 1, sparse=sparse)
+         for feat in
+         sparse_feature_columns + varlen_sparse_feature_columns}
+    )
+
+    # for feat in varlen_sparse_feature_columns:
+    #     embedding_dict[feat.embedding_name] = nn.EmbeddingBag(
+    #         feat.dimension, embedding_size, sparse=sparse, mode=feat.combiner)
+
+    for tensor in embedding_dict.values():
+        tensor.reset_parameters(init_std=init_std)
+
+    return embedding_dict.to(device)
 
 def input_from_feature_columns(self, X, feature_columns, embedding_dict, support_dense=True):
     sparse_feature_columns = list(

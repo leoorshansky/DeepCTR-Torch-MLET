@@ -1,9 +1,11 @@
 # -*- coding:utf-8 -*-
 """
-Author:
+Authors:
     Wutong Zhang
+    Leo Orshansky
 Reference:
-    [1] Guo H, Tang R, Ye Y, et al. Deepfm: a factorization-machine based neural network for ctr prediction[J]. arXiv preprint arXiv:1703.04247, 2017.(https://arxiv.org/abs/1703.04247)
+    [1] Jianxun Lian, Xiaohuan Zhou, et al. xDeepFM: Combining Explicit and Implicit Feature Interactions for Recommender Systems. arXiv preprint arXiv:1803.05170, 2018.(https://arxiv.org/abs/1803.05170)
+    [2] Michael Orshansky, Benjamin Ghaemmaghami, et al. Training with Multi-Layer Embeddings for Model Reduction. arXiv preprint arXiv:2006.05623, 2020. (https://arxiv.org/abs/2006.05623)
 """
 
 import torch
@@ -19,6 +21,7 @@ class xDeepFM(BaseModel):
 
     :param linear_feature_columns: An iterable containing all the features used by linear part of the model.
     :param dnn_feature_columns: An iterable containing all the features used by deep part of the model.
+    :param mlet_dim: Tuple containing the size of each embedding layer to be used during training
     :param dnn_hidden_units: list,list of positive integer or empty list, the layer number and units in each layer of deep net
     :param cin_layer_size: list,list of positive integer or empty list, the feature maps  in each hidden layer of Compressed Interaction Network
     :param cin_split_half: bool.if set to True, half of the feature maps in each hidden will connect to output unit
@@ -38,13 +41,14 @@ class xDeepFM(BaseModel):
     
     """
 
-    def __init__(self, linear_feature_columns, dnn_feature_columns, dnn_hidden_units=(256, 256),
+    def __init__(self, linear_feature_columns, dnn_feature_columns, mlet_dim, dnn_hidden_units=(256, 256),
                  cin_layer_size=(256, 128,), cin_split_half=True, cin_activation='relu', l2_reg_linear=0.00001,
                  l2_reg_embedding=0.00001, l2_reg_dnn=0, l2_reg_cin=0, init_std=0.0001, seed=1024, dnn_dropout=0,
                  dnn_activation='relu', dnn_use_bn=False, task='binary', device='cpu'):
 
         super(xDeepFM, self).__init__(linear_feature_columns, dnn_feature_columns,
                                       dnn_hidden_units=dnn_hidden_units,
+                                      mlet_dim=mlet_dim,
                                       l2_reg_linear=l2_reg_linear,
                                       l2_reg_embedding=l2_reg_embedding, l2_reg_dnn=l2_reg_dnn, init_std=init_std,
                                       seed=seed,
@@ -104,7 +108,7 @@ class xDeepFM(BaseModel):
             final_logit = linear_logit + dnn_logit + cin_logit
         else:
             raise NotImplementedError
-
+        
         y_pred = self.out(final_logit)
 
         return y_pred
